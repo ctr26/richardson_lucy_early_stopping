@@ -2,10 +2,10 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-
+from sklearn import preprocessing
 from scipy.sparse.linalg.interface import LinearOperator
 from numpy.random import binomial
-from sklearn.metrics import mean_squared_error,mean_absolute_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 from skimage.metrics import structural_similarity as ssim
 
 import numpy as np
@@ -108,7 +108,6 @@ ax[3].imshow(deconvolved_RL)
 ax[3].set_title('Deconvolved')
 
 
-
 # In[12]:
 
 
@@ -125,11 +124,9 @@ xx_astro, yy_astro = np.meshgrid(np.linspace(-1, 1, x_astro),
                                  np.linspace(-1, 1, y_astro))
 
 
-
 # In[14]:
 
 # Define a function that scales the PSF as a function of radial distance
-
 
 
 def psf_vary(psf_window_h, psf_window_w, radius, scale):
@@ -150,8 +147,6 @@ for i, radius in enumerate(np.linspace(-1, 1, 5)):
     ax[i].imshow(psf_current)
     ax[i].set_title("Radius: " + str(radius))
 plt.show()
-
-
 
 
 psf_switch = psf_switch_enum.STATIC
@@ -176,7 +171,6 @@ for i in tqdm(np.arange(N_v)):
     if(psf_switch == psf_switch_enum.VAR_PSF):
         psf_current = psf_vary(psf_window_h, psf_window_w, r_dist, scale)
 
-
     psf_window_volume[i, :, :] = psf_current
     delta_image = np.zeros_like(astro)
     delta_image[np.unravel_index(i, astro.shape)] = 1
@@ -190,12 +184,8 @@ for i in tqdm(np.arange(N_v)):
             f'./output/psfs_new/{str(i).zfill(6)}.png', psf_window_volume[i, :, :])
 
 
-
 plt.figure(figsize=(18, 7))
 plt.imshow(exposure.equalize_hist(measurement_matrix), cmap="gray_r")
-
-
-
 
 
 H = scipy.sparse.linalg.aslinearoperator(measurement_matrix)
@@ -236,11 +226,9 @@ b.shape
 
 # In[143]:
 
-from sklearn import preprocessing
 T = np.matrix(np.multiply(coin_flip_scale, np.array(b).T).T)
 V = b-T
 gt = astro.reshape(V.shape)
-
 
 
 plt.imshow(V.reshape(astro.shape))
@@ -268,9 +256,9 @@ else:
     x = trAb
 
 Rnrm_v = np.zeros(max_iter+1)
-Xnrm= np.zeros(max_iter+1)
-NE_Rnrm= np.zeros(max_iter+1)
-gt_error_l1= np.zeros(max_iter+1)
+Xnrm = np.zeros(max_iter+1)
+NE_Rnrm = np.zeros(max_iter+1)
+gt_error_l1 = np.zeros(max_iter+1)
 gt_error_l2 = np.zeros(max_iter+1)
 cross_correlation = np.zeros(max_iter+1)
 gt_error_ssim = np.zeros(max_iter+1)
@@ -336,13 +324,13 @@ for i in range(max_iter):
     # stop because normal equations residual satisfies ||A'*b-A'*A*x|| / ||A'b||<= NE_Rtol
     # if NE_Rnrm[i] <= NE_Rtol:
     #    break
-    gt_error_l2[i] = mean_squared_error(x,gt)
-    gt_error_l1[i] = mean_absolute_error(x,gt)
-    
-    x_flat= np.array(x.copy()).flatten()
+    gt_error_l2[i] = mean_squared_error(x, gt)
+    gt_error_l1[i] = mean_absolute_error(x, gt)
+
+    x_flat = np.array(x.copy()).flatten()
     gt_flat = np.array(gt.copy()).flatten()
 
-    gt_error_ssim[i] = ssim(x_flat,gt_flat)
+    gt_error_ssim[i] = ssim(x_flat, gt_flat)
 
     x_flat_scaled = preprocessing.scale(x_flat)
     gt_flat_scaled = preprocessing.scale(gt_flat)
@@ -350,10 +338,13 @@ for i in range(max_iter):
     # a_flat_scaled = (x_flat - np.mean(x_flat)) / (np.std(x_flat) * len(x_flat))
     # b_flat_scaled = (gt_flat - np.mean(gt_flat)) / (np.std(gt_flat))
     # cross_correlation[i] = np.sum(np.correlate(a_flat_scaled, b_flat_scaled, 'full'))
-    cross_correlation[i] = np.sum(np.correlate(x_flat_scaled,gt_flat_scaled, 'full'))
+    cross_correlation[i] = np.sum(np.correlate(
+        x_flat_scaled, gt_flat_scaled, 'full'))
     # a = np.dot(abs(x_flat_scaled),abs(gt_flat_scaled),'full')
-    log_liklihood[i] = np.sum(np.multiply(np.log(Ax),(b))-Ax-np.log(scipy.special.factorial(b)))
-    log_liklihood_v[i] = np.sum(np.multiply(np.log(Ax),(v))-Ax-np.log(scipy.special.factorial(v)))
+    log_liklihood[i] = np.sum(np.multiply(
+        np.log(Ax), (b))-Ax-np.log(scipy.special.factorial(b)))
+    log_liklihood_v[i] = np.sum(np.multiply(
+        np.log(Ax), (v))-Ax-np.log(scipy.special.factorial(v)))
 
 plt.plot(Rnrm_v[2:-1])
 plt.title("V residuals")
@@ -387,7 +378,6 @@ plt.ylabel("MSE")
 plt.show()
 
 
-
 plt.plot(gt_error_ssim[2:-1])
 plt.title("GT v x ~ SSIM")
 plt.xlabel("Iterations")
@@ -405,8 +395,6 @@ plt.title("x vs validation ~ log_liklihood_v")
 plt.xlabel("Iterations")
 plt.ylabel("log_liklihood")
 plt.show()
-
-
 
 
 # %%
