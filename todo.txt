@@ -1,0 +1,3 @@
+Two fold validation (x splitting)
+Four fold validation (x and y splitting)
+Normalised residuals generation
