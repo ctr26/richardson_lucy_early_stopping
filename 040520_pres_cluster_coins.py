@@ -7,6 +7,7 @@ from scipy.sparse.linalg.interface import LinearOperator
 from numpy.random import binomial
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from skimage.metrics import structural_similarity as ssim
+import pandas as pd
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -60,14 +61,55 @@ from sklearn.impute import SimpleImputer
 class psf_switch_enum(Enum):
     STATIC, VAR_PSF, VAR_ILL = auto(), auto(), auto()
 
+signal_strength = 2**8
+coin_flip_bias = 0.5
+savefig = 1
+save_images = 0
+image_scale = 4
+psf_scale = 0.75
+psf_size = 64
+psf_type = "static"
+max_iter = 100
+thinning_type = "poisson"
+csv_out = "data.csv"
+# Define constants: psf height width and image rescaling factor
+# %%
 
-SAVE_IMAGES = 0
+# if __name__ == "__main__":
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--signal_strength", default=signal_strength,type=int)
+parser.add_argument("--coin_flip_bias", default=coin_flip_bias,type=float)
+parser.add_argument("--savefig", default=savefig,type=int)
+parser.add_argument("--save_images", default=save_images,type=int)
+parser.add_argument("--image_scale", default=image_scale,type=int)
+parser.add_argument("--psf_scale", default=psf_scale,type=float)
+parser.add_argument("--psf_type", default=psf_type,type=str)
+parser.add_argument("--max_iter", default=max_iter,type=int)
+parser.add_argument("--thinning_type", default=thinning_type,type=str)
+parser.add_argument("--csv_out", default=csv_out,type=str)
+
+args = parser.parse_args([])
+globals().update(vars(args))
+
+# args = parser.parse_args()
+globals().update(vars(args))
+
+# if __name__ == "__main__":
+#     args = parser.parse_args()
+# %%
+if psf_type == "static":
+    psf_switch = psf_switch_enum.STATIC
+elif psf_type == "variable":
+    psf_switch = psf_switch_enum.VAR_PSF
+else:
+    raise Exception("I don't recongise this psf type")
+
 
 # # Image formation
 
-# Define constants: psf height width and image rescaling factor
-
-psf_w, psf_h, scale = 64, 64, 4
+psf_w, psf_h, scale = psf_size, psf_size, image_scale
 psf_window_w, psf_window_h = round(psf_w / scale), round(psf_h / scale)
 # Define approximate PSF function
 
@@ -94,7 +136,9 @@ def psf_vary(psf_window_h, psf_window_w, radius, scale):
     )
 
 
-static_psf = psf_guass(w=round(psf_window_h), h=round(psf_window_w), sigma=0.5 / scale)
+static_psf = psf_guass(
+    w=round(psf_window_h), h=round(psf_window_w), sigma=psf_scale / scale
+)
 plt.imshow(static_psf)
 plt.title("PSF")
 plt.show()
@@ -110,8 +154,8 @@ astro_noise = (
 astro_corrupt = astro_noisy = astro_blur + astro_noise  # Add Noise to Image
 
 astro_corrupt = (
-    np.random.poisson(lam=astro_blur * 2 ** 8, size=astro_blur.shape)
-) / 2 ** 8
+    np.random.poisson(lam=astro_blur * signal_strength, size=astro_blur.shape)
+) / signal_strength
 
 deconvolved_RL = restoration.richardson_lucy(
     astro_blur, static_psf, iterations=10
@@ -128,12 +172,11 @@ ax[3].imshow(deconvolved_RL)
 ax[3].set_title("Deconvolved")
 plt.show()
 
-
 # %%
 
 N_v = np.ma.size(astro)
 N_p = np.ma.size(astro_blur)
-measurement_matrix = matrix(np.zeros((N_p, N_v)))
+# measurement_matrix = matrix(np.zeros((N_p, N_v)))
 
 
 zero_image = np.zeros_like(astro)
@@ -158,7 +201,6 @@ for i, radius in enumerate(np.linspace(-1, 1, 5)):
 plt.show()
 
 
-psf_switch = psf_switch_enum.STATIC
 if psf_switch == psf_switch_enum.STATIC:
     filename = "H_staticpsf"
 if psf_switch == psf_switch_enum.VAR_PSF:
@@ -186,24 +228,30 @@ def make_flat_psf(i, psf_switch, static_psf, astro):
     delta_PSF = scipy.ndimage.convolve(delta_image, psf_current)
     return delta_PSF.flatten()
 
+
 delayed_list = []
 for i in tqdm(np.arange(N_v)):
     # Get the xy coordinates of the ith pixel in the original image
     # delayed_list.append(
     delayed_obj = dask.delayed(make_flat_psf)(i, psf_switch, static_psf, astro)
-    delayed_list.append(da.from_delayed(delayed_obj,shape=(np.multiply(*astro.shape),),dtype=np.float32))
+    delayed_list.append(
+        da.from_delayed(
+            delayed_obj, shape=(np.multiply(*astro.shape),), dtype=np.float32
+        )
+    )
     # )
     # measurement_matrix[i, :] = delta_PSF.flatten()
 # array = da.from_delayed(
 #     delayed_list, (len(delayed_list),), dtype=float
 # )
 from dask.diagnostics import ProgressBar
+
 with ProgressBar():
-     stack = da.stack(delayed_list, axis=0)
-     measurement_matrix = np.array(stack)
-    #  stack.compute()
+    stack = da.stack(delayed_list, axis=0)
+    measurement_matrix = np.array(stack)
+#  stack.compute()
 # %%
-measurement_matrix = stack
+# measurement_matrix = stack
 plt.figure(figsize=(18, 7))
 plt.imshow(exposure.equalize_hist(measurement_matrix), cmap="gray_r")
 # %%
@@ -228,34 +276,89 @@ b = f
 x0 = None
 Rtol = 1e-6
 NE_Rtol = 1e-6
-max_iter = 100
+# max_iter = 100
 sigmaSq = 0.0
 beta = 0.0
 # integer_signal = np.rint(b*2**16).astype(int)
-coin_flip_scale = np.random.binomial([2 ** 8] * len(b), 0.5) / 2 ** 8
+coin_flip_scale = (
+    np.random.binomial([signal_strength] * len(b), coin_flip_bias) / signal_strength
+)
 # coin_flip_scale = np.random.binomial([2 ** 8] * len(b), 0.5) / 2 ** 8
 
-# %% FIsh thinning
-T = np.matrix(np.multiply(coin_flip_scale, np.array(b).T).T)
-V = b - T
+from skimage.transform import rescale, resize, downscale_local_mean
+
+T_thinned = b.copy().reshape(astro.shape)
+V_thinned = b.copy().reshape(astro.shape)
+
+# thinning_type = "spatial_interlaced"
+
+if thinning_type == "poisson":
+    # %% FIsh thinning
+    T_scaled = np.matrix(np.multiply(coin_flip_scale, np.array(b.copy()).T).T)
+    V_scaled = b - T_scaled
+
+if thinning_type == "spatial_interlaced":
+    T_thinned = T_thinned.copy()
+    V_thinned = V_thinned.copy()
+    T_thinned[:, 0::2] = 0
+    V_thinned[:, 1::2] = 0
+    T = T_thinned
+    V = V_thinned
+
+if thinning_type == "spatial_interpolated":
+
+    T_thinned_squished = T_thinned.copy()[:, 0::2]
+    V_thinned_squished = V_thinned.copy()[:, 1::2]
+
+    T_scaled = skimage.transform.rescale(
+        T_thinned_squished, (1.0, 2.0), anti_aliasing=True
+    )
+    V_scaled = skimage.transform.rescale(
+        V_thinned_squished, (1.0, 2.0), anti_aliasing=True
+    )
+    # T = T_scaled
+    # V = V_scaled
+
+if thinning_type == "spatial_repeated":
+    T_thinned_squished = T_thinned.copy()
+    V_thinned_squished = V_thinned.copy()
+
+    T_thinned_squished[:, 0::2] = T_thinned_squished[:, 1::2]
+    V_thinned_squished[:, 1::2] = V_thinned_squished[:, 0::2]
+
+    T_scaled = T_thinned_squished
+    V_scaled = V_thinned_squished
+
+T = T_scaled.reshape(b.shape)
+V = V_scaled.reshape(b.shape)
+
+# FIsh thinning
+# T = np.matrix(np.multiply(coin_flip_scale, np.array(b).T).T)
+# V = b - T
 
 # T = np.matrix(np.multiply(coin_flip_scale, np.array(b).T).T)
 # V = b - T
 
-# %% Spatial thinning
+# Spatial thinning
 
-# T_thinned = b.reshape(astro.shape)[:,0::2]
-# V_thinned = b.reshape(astro.shape)[:,1::2]
+# T_thinned = b.copy().reshape(astro.shape)
+# V_thinned = b.copy().reshape(astro.shape)
 
-# from skimage.transform import rescale, resize, downscale_local_mean
+# T_thinned_squished = T_thinned.copy()[:,0::2]
+# V_thinned_squished = V_thinned.copy()[:,1::2]
 
-# T_scaled = skimage.transform.rescale(T_thinned,
-#                 (1.0,2.0), anti_aliasing=True)
-# V_scaled = skimage.transform.rescale(V_thinned,
-#                 (1.0,2.0), anti_aliasing=True)
-# T = T_scaled.flatten()
-# V = V_scaled.flatten()
-# %% Show me
+# T_thinned_squished = T_thinned.copy()
+# V_thinned_squished = V_thinned.copy()
+
+# T_thinned_squished[:,0::2] = T_thinned_squished[:,1::2]
+# V_thinned_squished[:,1::2] = V_thinned_squished[:,0::2]
+
+# T_thinned[:,0::2] = 0
+# V_thinned[:,1::2] = 0
+
+# T_scaled = T_thinned_squished
+# V_scaled = V_thinned_squished
+
 b = np.matrix(T).reshape(f.shape)
 gt = astro.reshape(V.shape)
 
@@ -268,7 +371,7 @@ plt.show()
 plt.imshow(T.reshape(astro.shape))
 plt.show()
 # b = T
-#  %%
+
 # The A operator represents a large, sparse matrix that
 # has dimensions [ nrays x nvoxels ]
 
@@ -330,8 +433,7 @@ c = (
 b = b + np.matrix(sigmaSq * np.ones(nrays)).T
 
 # i =0
-SAVEFIG = 1
-# %%
+
 range_tqdm = tqdm(range(max_iter))
 
 for i in range_tqdm:
@@ -372,16 +474,19 @@ for i in range_tqdm:
     # # disabled for now to save on extra rmatvec
 
     toc = time.time()
-    range_tqdm.set_description(
-        f"RL Iteration {i:0}   ({toc-tic} seconds) \n"
-        f"Residual Norm: {Rnrm[i]:08}  (tol = {Rtol:08}  \n"
-        f"Residual V Norm: {Rnrm_V[i]:08} (tol = {Rtol:08}  \n"
-        f"Residual T Norm: {Rnrm_T[i]:08} (tol = {Rtol:08}  \n"
-        f"v Norm: {norm_v[i]:08} (tol = {Rtol:08}  \n"
+    range_tqdm.set_description_str(
+        f"RL Iteration {i:0} ({(toc-tic):.4f} seconds) {chr(10)}"
+        f"Residual Norm: {Rnrm[i]:.4f}  (tol = {Rtol:.2f}  {chr(10)}"
+        f"Residual V Norm: {Rnrm_V[i]:.5f} (tol = {Rtol:.2f} {chr(10)}"
+        f"Residual T Norm: {Rnrm_T[i]:.5f} (tol = {Rtol:.2f}  {chr(10)}"
+        f"v Norm: {norm_v[i]:.4f} (tol = {Rtol:.2f} {chr(10)}"
         # print '\tError Norm: %0.4g(tol = %0.2e)  ' % (NE_Rnrm[i], NE_Rtol)
-        f"Update Norm:{str(Xnrm[i])} \n",
-        refresh=True,
+        f"Update Norm:{Xnrm[i]:.4f}",
+        refresh=False
     )
+    # range_tqdm.set_postfix({
+    #     "RL Iteration":toc-tic
+    # })
     # stop because residual satisfies ||b-A*x|| / ||b||<= Rtol
     if Rnrm[i] <= Rtol:
         break
@@ -407,7 +512,8 @@ for i in range_tqdm:
     # a_flat_scaled = (x_flat - np.mean(x_flat)) / (np.std(x_flat) * len(x_flat))
     # b_flat_scaled = (gt_flat - np.mean(gt_flat)) / (np.std(gt_flat))
     # cross_correlation[i] = np.sum(np.correlate(a_flat_scaled, b_flat_scaled, 'full'))
-    cross_correlation[i] = np.sum(np.correlate(x_flat_scaled, gt_flat_scaled, "full"))
+    cross_correlation[i] = np.sum(np.correlate(x_flat_scaled,
+                            gt_flat_scaled, "full"))
     # a = np.dot(abs(x_flat_scaled),abs(gt_flat_scaled),'full')
     log_liklihood[i] = np.sum(
         np.multiply(np.log(Ax), (b)) - Ax - np.log(scipy.special.factorial(b))
@@ -421,6 +527,56 @@ for i in range_tqdm:
     log_liklihood_T[i] = np.sum(
         np.multiply(np.log(Ax), (T)) - Ax - np.log(scipy.special.factorial(T))
     )
+
+# data = pd.DataFrame()
+# metadata = pd.DataFrame(vars(args),index=[0])
+
+vars_dict = dict({i:eval(i) for i in [
+        "gt_error_l2" ,
+        "gt_error_l1" ,
+        "V_error_l1" ,
+        "T_error_l1" ,
+        "gt_error_ssim", 
+        "cross_correlation" ,
+        "log_liklihood" ,
+        "log_liklihood_v" ,
+        "log_liklihood_V" ,
+        "log_liklihood_T" ,
+        "residual_v" ,
+        "residual_V" ,
+        "residual_T" ,
+        "norm_v" ,
+        "Rnrm" ,
+        "Xnrm" ,
+        "Rnrm_V" ,
+        "Rnrm_T" ,
+        "Rnrm_v" ,
+    ]})
+vars_dict.update(vars(args))
+data = pd.DataFrame.from_dict(vars_dict);data
+
+
+# data["gt_error_l2"] = gt_error_l2
+# data["gt_error_l1"] = gt_error_l1
+# data["V_error_l1"] = V_error_l1
+# data["T_error_l1"] = T_error_l1
+# data["gt_error_ssim"] = gt_error_ssim
+# data["cross_correlation"] = cross_correlation
+# data["log_liklihood"] = log_liklihood
+# data["log_liklihood_v"] = log_liklihood_v
+# data["log_liklihood_V"] = log_liklihood_V
+# data["log_liklihood_"] = log_liklihood_T
+# data["residual_v"] = residual_v
+# data["residual_V"] = residual_V
+# data["residual_T"] = residual_T
+# data["norm_v"] = norm_v
+# data["Rnrm"] = Rnrm
+# data["Xnrm"] = Xnrm
+# data["Rnrm_V"] = Rnrm_V
+# data["Rnrm_T"] = Rnrm_T
+# data["Rnrm_v"] = Rnrm_v
+
+data.to_csv(csv_out)
 
 plt.plot(Rnrm_v[1:-1])
 plt.yscale("log")
@@ -535,6 +691,7 @@ plt.title("x vs validation ~ log_liklihood_V")
 plt.xlabel("Iterations")
 plt.ylabel("log_liklihood")
 plt.show()
+
 
 
 # # %%
