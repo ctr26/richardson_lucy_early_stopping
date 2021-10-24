@@ -80,7 +80,7 @@ out_dir = "out"
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--signal_strength", default=signal_strength, type=int)
+parser.add_argument("--signal_strength", default=signal_strength, type=float)
 parser.add_argument("--coin_flip_bias", default=coin_flip_bias, type=float)
 parser.add_argument("--savefig", default=savefig, type=int)
 parser.add_argument("--save_images", default=save_images, type=int)
@@ -90,14 +90,14 @@ parser.add_argument("--psf_type", default=psf_type, type=str)
 parser.add_argument("--max_iter", default=max_iter, type=int)
 parser.add_argument("--thinning_type", default=thinning_type, type=str)
 parser.add_argument("--out_dir", default=out_dir, type=str)
-
+args = parser.parse_args()
 try:
     args = parser.parse_args()
 # globals().update(vars(args))
 except:
     args = parser.parse_args([])
 globals().update(vars(args))
-# print(vars(args))
+print(vars(args))
 # if __name__ == "__main__":
 #     args = parser.parse_args()
 # %%
