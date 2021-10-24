@@ -11,7 +11,7 @@ PSF_TYPE = "static"
 MAX_ITER = 200
 
 SIGNAL_STRENGTH = 2**8
-SIGNAL_STRENGTH = np.power(2,np.arange(1,8))
+SIGNAL_STRENGTH = np.round(np.linspace(1,0,11),2)
 
 COIN_FLIP_BIAS = 0.5
 COIN_FLIP_BIAS =  np.round(np.arange(0.5,1,11),2)
@@ -23,7 +23,7 @@ PSF_SCALE = 0.5
 PSF_SCALE = np.round(np.linspace(0,1,11),2)
 PSF_SIZE = 64
 
-results = "out/{psf_scale}-{signal_strength}-{coin_flip_bias}-{max_iter}-{thinning_type}-{psf_type}.csv"
+results = "out/{psf_scale}-{signal_strength}-{coin_flip_bias}-{max_iter}-{thinning_type}-{psf_type}"
 
 all_results = expand(results,
             psf_scale=PSF_SCALE,
@@ -55,10 +55,10 @@ rule simulate:
         # signal_strength = "{signal_strength}",
         # thinning_type = "{thinning_type}"
     output:
-        results
+        directory(results)
     shell:
         "python {input} \
-        --csv_out {output} \
+        --out_dir {output} \
         --psf_type {wildcards.psf_type} \
         --psf_scale {wildcards.psf_scale} \
         --signal_strength {wildcards.signal_strength} \

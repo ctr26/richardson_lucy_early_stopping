@@ -15,7 +15,7 @@ import PIL
 import scipy
 from IPython.display import Video
 from tqdm import tqdm
-from tqdm.notebook import tqdm
+# from tqdm.notebook import tqdm
 
 import multiprocessing
 import os
@@ -61,7 +61,8 @@ from sklearn.impute import SimpleImputer
 class psf_switch_enum(Enum):
     STATIC, VAR_PSF, VAR_ILL = auto(), auto(), auto()
 
-signal_strength = 2**8
+
+signal_strength = 1
 coin_flip_bias = 0.5
 savefig = 1
 save_images = 0
@@ -71,7 +72,7 @@ psf_size = 64
 psf_type = "static"
 max_iter = 100
 thinning_type = "poisson"
-csv_out = "data.csv"
+out_dir = "out"
 # Define constants: psf height width and image rescaling factor
 # %%
 
@@ -79,23 +80,24 @@ csv_out = "data.csv"
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--signal_strength", default=signal_strength,type=int)
-parser.add_argument("--coin_flip_bias", default=coin_flip_bias,type=float)
-parser.add_argument("--savefig", default=savefig,type=int)
-parser.add_argument("--save_images", default=save_images,type=int)
-parser.add_argument("--image_scale", default=image_scale,type=int)
-parser.add_argument("--psf_scale", default=psf_scale,type=float)
-parser.add_argument("--psf_type", default=psf_type,type=str)
-parser.add_argument("--max_iter", default=max_iter,type=int)
-parser.add_argument("--thinning_type", default=thinning_type,type=str)
-parser.add_argument("--csv_out", default=csv_out,type=str)
+parser.add_argument("--signal_strength", default=signal_strength, type=int)
+parser.add_argument("--coin_flip_bias", default=coin_flip_bias, type=float)
+parser.add_argument("--savefig", default=savefig, type=int)
+parser.add_argument("--save_images", default=save_images, type=int)
+parser.add_argument("--image_scale", default=image_scale, type=int)
+parser.add_argument("--psf_scale", default=psf_scale, type=float)
+parser.add_argument("--psf_type", default=psf_type, type=str)
+parser.add_argument("--max_iter", default=max_iter, type=int)
+parser.add_argument("--thinning_type", default=thinning_type, type=str)
+parser.add_argument("--out_dir", default=out_dir, type=str)
 
-args = parser.parse_args([])
+try:
+    args = parser.parse_args()
+# globals().update(vars(args))
+except:
+    args = parser.parse_args([])
 globals().update(vars(args))
-
-# args = parser.parse_args()
-globals().update(vars(args))
-
+# print(vars(args))
 # if __name__ == "__main__":
 #     args = parser.parse_args()
 # %%
@@ -105,6 +107,11 @@ elif psf_type == "variable":
     psf_switch = psf_switch_enum.VAR_PSF
 else:
     raise Exception("I don't recongise this psf type")
+
+import pathlib
+
+print(f"dir: {out_dir}")
+pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
 
 
 # # Image formation
@@ -143,19 +150,22 @@ plt.imshow(static_psf)
 plt.title("PSF")
 plt.show()
 # %% Deconvolution
+from skimage.util import random_noise
 
-astro = rescale(color.rgb2gray(data.human_mitosis()), 1.0 / scale)
+astro = rescale(color.rgb2gray(data.human_mitosis()), 1.0 / scale)/signal_strength
 astro_blur = conv2(astro, static_psf, "same")  # Blur image
-astro_noise = (
-    np.random.poisson(lam=25, size=astro_blur.shape)
-) / 255.0  # Add Noise to Image
+# astro_noise = (
+#     np.random.poisson(lam=25, size=astro_blur.shape)
+# ) / 255.0  # Add Noise to Image
 
 
-astro_corrupt = astro_noisy = astro_blur + astro_noise  # Add Noise to Image
+# astro_corrupt = astro_noisy = astro_blur + astro_noise  # Add Noise to Image
 
-astro_corrupt = (
-    np.random.poisson(lam=astro_blur * signal_strength, size=astro_blur.shape)
-) / signal_strength
+# astro_corrupt = (
+#     np.random.poisson(lam=astro_blur * signal_strength, size=astro_blur.shape)
+# ) / signal_strength
+
+astro_corrupt = random_noise(astro_blur,"poisson")
 
 deconvolved_RL = restoration.richardson_lucy(
     astro_blur, static_psf, iterations=10
@@ -166,7 +176,7 @@ ax[0].imshow(astro)
 ax[0].set_title("Truth")
 ax[1].imshow(astro_blur)
 ax[1].set_title("Blurred")
-ax[2].imshow(astro_noisy)
+ax[2].imshow(astro_corrupt)
 ax[2].set_title("Blurred and noised")
 ax[3].imshow(deconvolved_RL)
 ax[3].set_title("Deconvolved")
@@ -258,12 +268,13 @@ plt.imshow(exposure.equalize_hist(measurement_matrix), cmap="gray_r")
 
 H = scipy.sparse.linalg.aslinearoperator(measurement_matrix)
 g_blurred = H.dot(astro.reshape(-1, 1))
-f = np.matrix(g_blurred) + astro_noise.reshape(g_blurred.shape)
-
+# f = np.matrix(g_blurred) + astro_noise.reshape(g_blurred.shape)
+# g_blurred
+f = random_noise(np.matrix(g_blurred),"poisson")
 
 fig, ax = plt.subplots(ncols=3, nrows=1, figsize=(16, 7))
 
-ax[0].imshow(g_blurred.reshape(astro.shape))
+ax[0].imshow(f.reshape(astro.shape))
 ax[0].set_title("Blurred")
 ax[1].imshow(astro)
 ax[1].set_title("Original")
@@ -281,7 +292,7 @@ sigmaSq = 0.0
 beta = 0.0
 # integer_signal = np.rint(b*2**16).astype(int)
 coin_flip_scale = (
-    np.random.binomial([signal_strength] * len(b), coin_flip_bias) / signal_strength
+    np.random.binomial([2**8] * len(b), coin_flip_bias) / [2**8] 
 )
 # coin_flip_scale = np.random.binomial([2 ** 8] * len(b), 0.5) / 2 ** 8
 
@@ -302,8 +313,8 @@ if thinning_type == "spatial_interlaced":
     V_thinned = V_thinned.copy()
     T_thinned[:, 0::2] = 0
     V_thinned[:, 1::2] = 0
-    T = T_thinned
-    V = V_thinned
+    T_scaled = T_thinned
+    V_scaled = V_thinned
 
 if thinning_type == "spatial_interpolated":
 
@@ -434,7 +445,13 @@ b = b + np.matrix(sigmaSq * np.ones(nrays)).T
 
 # i =0
 
-range_tqdm = tqdm(range(max_iter))
+iterations = range(max_iter)
+range_tqdm = tqdm(iterations)
+
+def log_liklihood_x_given_Ax(x,Ax):
+    return np.sum(
+        np.multiply(np.log(Ax), (x)) - Ax - np.log(scipy.special.factorial(x))
+    )
 
 for i in range_tqdm:
     tic = time.time()
@@ -475,14 +492,14 @@ for i in range_tqdm:
 
     toc = time.time()
     range_tqdm.set_description_str(
-        f"RL Iteration {i:0} ({(toc-tic):.4f} seconds) {chr(10)}"
-        f"Residual Norm: {Rnrm[i]:.4f}  (tol = {Rtol:.2f}  {chr(10)}"
-        f"Residual V Norm: {Rnrm_V[i]:.5f} (tol = {Rtol:.2f} {chr(10)}"
-        f"Residual T Norm: {Rnrm_T[i]:.5f} (tol = {Rtol:.2f}  {chr(10)}"
-        f"v Norm: {norm_v[i]:.4f} (tol = {Rtol:.2f} {chr(10)}"
+        f"RL Iteration {i:0} ({(toc-tic):.4f} seconds)"
+        f"Residual Norm: {Rnrm[i]:.4f}  (tol = {Rtol:.2f}"
+        f"Residual V Norm: {Rnrm_V[i]:.5f} (tol = {Rtol:.2f}"
+        f"Residual T Norm: {Rnrm_T[i]:.5f} (tol = {Rtol:.2f}"
+        f"v Norm: {norm_v[i]:.4f} (tol = {Rtol:.2f}"
         # print '\tError Norm: %0.4g(tol = %0.2e)  ' % (NE_Rnrm[i], NE_Rtol)
         f"Update Norm:{Xnrm[i]:.4f}",
-        refresh=False
+        refresh=False,
     )
     # range_tqdm.set_postfix({
     #     "RL Iteration":toc-tic
@@ -512,72 +529,62 @@ for i in range_tqdm:
     # a_flat_scaled = (x_flat - np.mean(x_flat)) / (np.std(x_flat) * len(x_flat))
     # b_flat_scaled = (gt_flat - np.mean(gt_flat)) / (np.std(gt_flat))
     # cross_correlation[i] = np.sum(np.correlate(a_flat_scaled, b_flat_scaled, 'full'))
-    cross_correlation[i] = np.sum(np.correlate(x_flat_scaled,
-                            gt_flat_scaled, "full"))
+    cross_correlation[i] = np.sum(np.correlate(x_flat_scaled, gt_flat_scaled, "full"))
     # a = np.dot(abs(x_flat_scaled),abs(gt_flat_scaled),'full')
-    log_liklihood[i] = np.sum(
-        np.multiply(np.log(Ax), (b)) - Ax - np.log(scipy.special.factorial(b))
-    )
-    log_liklihood_v[i] = np.sum(
-        np.multiply(np.log(Ax), (v)) - Ax - np.log(scipy.special.factorial(v))
-    )
-    log_liklihood_V[i] = np.sum(
-        np.multiply(np.log(Ax), (V)) - Ax - np.log(scipy.special.factorial(V))
-    )
-    log_liklihood_T[i] = np.sum(
-        np.multiply(np.log(Ax), (T)) - Ax - np.log(scipy.special.factorial(T))
-    )
+
+    log_liklihood[i] = log_liklihood_x_given_Ax(b,Ax)
+    log_liklihood_v[i] = log_liklihood_x_given_Ax(v,Ax)
+    log_liklihood_V[i] = log_liklihood_x_given_Ax(V,Ax)
+    log_liklihood_T[i] = log_liklihood_x_given_Ax(T,Ax)
 
 # data = pd.DataFrame()
 # metadata = pd.DataFrame(vars(args),index=[0])
 
-vars_dict = dict({i:eval(i) for i in [
-        "gt_error_l2" ,
-        "gt_error_l1" ,
-        "V_error_l1" ,
-        "T_error_l1" ,
-        "gt_error_ssim", 
-        "cross_correlation" ,
-        "log_liklihood" ,
-        "log_liklihood_v" ,
-        "log_liklihood_V" ,
-        "log_liklihood_T" ,
-        "residual_v" ,
-        "residual_V" ,
-        "residual_T" ,
-        "norm_v" ,
-        "Rnrm" ,
-        "Xnrm" ,
-        "Rnrm_V" ,
-        "Rnrm_T" ,
-        "Rnrm_v" ,
-    ]})
+vars_dict = dict(
+    {
+        i: eval(i)
+        for i in [
+            "iterations",
+            "gt_error_l2",
+            "gt_error_l1",
+            "V_error_l1",
+            "T_error_l1",
+            "gt_error_ssim",
+            "cross_correlation",
+            "log_liklihood",
+            "log_liklihood_v",
+            "log_liklihood_V",
+            "log_liklihood_T",
+            "residual_v",
+            "residual_V",
+            "residual_T",
+            "norm_v",
+            "Rnrm",
+            "Xnrm",
+            "Rnrm_V",
+            "Rnrm_T",
+            "Rnrm_v",
+        ]
+    }
+)
 vars_dict.update(vars(args))
-data = pd.DataFrame.from_dict(vars_dict);data
+data = pd.DataFrame.from_dict(vars_dict)
+data
 
 
-# data["gt_error_l2"] = gt_error_l2
-# data["gt_error_l1"] = gt_error_l1
-# data["V_error_l1"] = V_error_l1
-# data["T_error_l1"] = T_error_l1
-# data["gt_error_ssim"] = gt_error_ssim
-# data["cross_correlation"] = cross_correlation
-# data["log_liklihood"] = log_liklihood
-# data["log_liklihood_v"] = log_liklihood_v
-# data["log_liklihood_V"] = log_liklihood_V
-# data["log_liklihood_"] = log_liklihood_T
-# data["residual_v"] = residual_v
-# data["residual_V"] = residual_V
-# data["residual_T"] = residual_T
-# data["norm_v"] = norm_v
-# data["Rnrm"] = Rnrm
-# data["Xnrm"] = Xnrm
-# data["Rnrm_V"] = Rnrm_V
-# data["Rnrm_T"] = Rnrm_T
-# data["Rnrm_v"] = Rnrm_v
+data.to_csv(os.path.join(out_dir, "data.csv"))
 
-data.to_csv(csv_out)
+from PIL import Image, ImageOps
+from skimage.exposure import rescale_intensity
 
+Image.fromarray(rescale_intensity(T.reshape(astro.shape), out_range=np.uint8)).convert("L").save(os.path.join(out_dir, "T.png"))
+Image.fromarray(rescale_intensity(f.reshape(astro.shape), out_range=np.uint8)).convert("L").save(os.path.join(out_dir, "f.png"))
+Image.fromarray(rescale_intensity(V.reshape(astro.shape), out_range=np.uint8)).convert("L").save(os.path.join(out_dir, "V.png"))
+Image.fromarray(rescale_intensity(g_blurred.reshape(astro.shape), out_range=np.uint8)).convert("L").save(os.path.join(out_dir, "g_blurred.png"))
+Image.fromarray(rescale_intensity(astro, out_range=np.uint8)).convert("L").save(os.path.join(out_dir, "raw.png"))
+
+
+#  %%
 plt.plot(Rnrm_v[1:-1])
 plt.yscale("log")
 plt.title("v residuals")
@@ -691,7 +698,6 @@ plt.title("x vs validation ~ log_liklihood_V")
 plt.xlabel("Iterations")
 plt.ylabel("log_liklihood")
 plt.show()
-
 
 
 # # %%
