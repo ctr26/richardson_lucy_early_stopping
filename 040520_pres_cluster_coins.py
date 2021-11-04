@@ -8,6 +8,7 @@ from numpy.random import binomial
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from skimage.metrics import structural_similarity as ssim
 import pandas as pd
+from skimage.metrics import peak_signal_noise_ratio
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -71,7 +72,7 @@ psf_scale = 0.75
 psf_size = 64
 psf_type = "static"
 max_iter = 100
-thinning_type = "poisson"
+thinning_type = "none"
 out_dir = "out"
 # Define constants: psf height width and image rescaling factor
 # %%
@@ -90,7 +91,6 @@ parser.add_argument("--psf_type", default=psf_type, type=str)
 parser.add_argument("--max_iter", default=max_iter, type=int)
 parser.add_argument("--thinning_type", default=thinning_type, type=str)
 parser.add_argument("--out_dir", default=out_dir, type=str)
-args = parser.parse_args()
 try:
     args = parser.parse_args()
 # globals().update(vars(args))
@@ -107,12 +107,6 @@ elif psf_type == "variable":
     psf_switch = psf_switch_enum.VAR_PSF
 else:
     raise Exception("I don't recongise this psf type")
-
-import pathlib
-
-print(f"dir: {out_dir}")
-pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
-
 
 # # Image formation
 
@@ -135,7 +129,7 @@ def psf_guass(w=psf_w, h=psf_h, sigma=3):
 # Define a function that scales the PSF as a function of radial distance
 
 
-def psf_vary(psf_window_h, psf_window_w, radius, scale):
+def psf_vary(psf_window_h, psf_window_w, radius, scale, sigma=0.5):
     return psf_guass(
         w=round(psf_window_h),
         h=round(psf_window_w),
@@ -340,6 +334,11 @@ if thinning_type == "spatial_repeated":
     T_scaled = T_thinned_squished
     V_scaled = V_thinned_squished
 
+if thinning_type == "none":
+    T_scaled = b.copy()
+    V_scaled = b.copy()
+
+
 T = T_scaled.reshape(b.shape)
 V = V_scaled.reshape(b.shape)
 
@@ -423,6 +422,11 @@ log_liklihood = np.zeros(max_iter)
 log_liklihood_v = np.zeros(max_iter)
 log_liklihood_V = np.zeros(max_iter)
 log_liklihood_T = np.zeros(max_iter)
+psnr_V = np.zeros(max_iter)
+psnr_T = np.zeros(max_iter)
+psnr_b = np.zeros(max_iter)
+
+
 norm_v = np.zeros(max_iter)
 
 eps = np.spacing(1)
@@ -536,9 +540,11 @@ for i in range_tqdm:
     log_liklihood_v[i] = log_liklihood_x_given_Ax(v,Ax)
     log_liklihood_V[i] = log_liklihood_x_given_Ax(V,Ax)
     log_liklihood_T[i] = log_liklihood_x_given_Ax(T,Ax)
+    psnr_V[i] = peak_signal_noise_ratio(V,Ax)
+    psnr_T[i] = peak_signal_noise_ratio(T,Ax)
+    psnr_b[i] = peak_signal_noise_ratio(b,Ax)
 
 # data = pd.DataFrame()
-# metadata = pd.DataFrame(vars(args),index=[0])
 
 vars_dict = dict(
     {
@@ -564,15 +570,25 @@ vars_dict = dict(
             "Rnrm_V",
             "Rnrm_T",
             "Rnrm_v",
+            "psnr_V",
+            "psnr_T",
+            "psnr_b"
         ]
     }
 )
+
+
+import pathlib
+
+print(f"dir: {out_dir}")
+pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
+
 vars_dict.update(vars(args))
-data = pd.DataFrame.from_dict(vars_dict)
-data
+data_df = pd.DataFrame.from_dict(vars_dict)
+# data.join(metadata)
+# metadata
 
-
-data.to_csv(os.path.join(out_dir, "data.csv"))
+data_df.to_csv(os.path.join(out_dir, "data.csv"))
 
 from PIL import Image, ImageOps
 from skimage.exposure import rescale_intensity
@@ -699,6 +715,23 @@ plt.xlabel("Iterations")
 plt.ylabel("log_liklihood")
 plt.show()
 
+plt.plot(psnr_b[1:-1])
+plt.title("x vs validation ~ psnr_b")
+plt.xlabel("Iterations")
+plt.ylabel("psnr")
+plt.show()
+
+plt.plot(psnr_V[1:-1])
+plt.title("x vs validation ~ psnr_V")
+plt.xlabel("Iterations")
+plt.ylabel("psnr")
+plt.show()
+
+plt.plot(psnr_T[1:-1])
+plt.title("x vs validation ~ psnr_T")
+plt.xlabel("Iterations")
+plt.ylabel("psnr")
+plt.show()
 
 # # %%
 # # compute second derivative
