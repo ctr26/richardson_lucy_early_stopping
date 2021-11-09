@@ -15,7 +15,6 @@ dependencies:
   - numpy
   - pims
   - python=3.8
-  - rclone
   - matplotlib
   - scikit-image
   - jpype1
