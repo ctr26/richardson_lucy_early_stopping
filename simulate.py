@@ -116,31 +116,31 @@ psf_window_w, psf_window_h = round(psf_w / scale), round(psf_h / scale)
 # Define approximate PSF function
 
 
-# def gaussian(x, mu, sig):
-#     return np.exp(-np.power(x - mu, 2.0) / (2 * np.power(sig, 2.0)))
+def gaussian(x, mu, sig):
+    return np.exp(-np.power(x - mu, 2.0) / (2 * np.power(sig, 2.0)))
 
 
-# def psf_guass(w=psf_w, h=psf_h, sigma=3):
-#     # blank_psf = np.zeros((w,h))
-#     xx, yy = np.meshgrid(np.linspace(-1, 1, w), np.linspace(-1, 1, h))
-#     psf = gaussian(xx, 0, sigma) * gaussian(yy, 0, sigma)
-#     return psf / psf.sum()  # Normalise PSF "energy"
+def psf_guass(w=psf_w, h=psf_h, sigma=3):
+    # blank_psf = np.zeros((w,h))
+    xx, yy = np.meshgrid(np.linspace(-1, 1, w), np.linspace(-1, 1, h))
+    psf = gaussian(xx, 0, sigma) * gaussian(yy, 0, sigma)
+    return psf / psf.sum()  # Normalise PSF "energy"
 
 
 # Define a function that scales the PSF as a function of radial distance
 
 
-# def psf_vary(psf_window_h, psf_window_w, radius, scale, sigma=0.5):
-#     return psf_guass(
-#         w=round(psf_window_h),
-#         h=round(psf_window_w),
-#         sigma=(0.5 / scale) * abs((-0.4 * radius)) + 0.1,
-#     )
+def psf_vary(psf_window_h, psf_window_w, radius, scale, sigma=0.5):
+    return psf_guass(
+        w=round(psf_window_h),
+        h=round(psf_window_w),
+        sigma=(0.5 / scale) * abs((-0.4 * radius)) + 0.1,
+    )
 
 
-# static_psf = psf_guass(
-#     w=round(psf_window_h), h=round(psf_window_w), sigma=psf_scale / scale
-# )
+static_psf = psf_guass(
+    w=round(psf_window_h), h=round(psf_window_w), sigma=psf_scale / scale
+)
 #  %%
 # %% Deconvolution
 from skimage.util import random_noise
@@ -149,85 +149,85 @@ astro = (
     rescale(color.rgb2gray(data.human_mitosis()), 1.0 / image_scale) / signal_strength
 )
 
-image_width, image_height = np.shape(astro)
+# image_width, image_height = np.shape(astro)
 
-x_range = np.linspace(-1, 1, image_width)
-y_range = np.linspace(-1, 1, image_height)
+# x_range = np.linspace(-1, 1, image_width)
+# y_range = np.linspace(-1, 1, image_height)
 
-xx, yy = np.meshgrid(x_range, y_range)
-out = np.square(xx, yy)
-disk = np.sqrt(
-    np.add(
-        *np.square(
-            [
-                *np.meshgrid(
-                    np.linspace(-1, 1, image_width), np.linspace(-1, 1, image_height)
-                )
-            ]
-        )
-    )
-)
+# xx, yy = np.meshgrid(x_range, y_range)
+# out = np.square(xx, yy)
+# disk = np.sqrt(
+#     np.add(
+#         *np.square(
+#             [
+#                 *np.meshgrid(
+#                     np.linspace(-1, 1, image_width), np.linspace(-1, 1, image_height)
+#                 )
+#             ]
+#         )
+#     )
+# )
 
-#  %%
+# #  %%
 
-xx, yy = np.meshgrid(
-                            np.linspace(-1, 1, image_width),
-                            np.linspace(-1, 1, image_height),
-                        )
-disk = (
-    np.sqrt(
-        np.sum(
-            [
-                *np.square(
-                    [
-                        xx, yy 
-                    ]
-                )
-            ],
-            axis=0,
-        )
-    )
-    < psf_scale
-)
+# xx, yy = np.meshgrid(
+#                             np.linspace(-1, 1, image_width),
+#                             np.linspace(-1, 1, image_height),
+#                         )
+# disk = (
+#     np.sqrt(
+#         np.sum(
+#             [
+#                 *np.square(
+#                     [
+#                         xx, yy 
+#                     ]
+#                 )
+#             ],
+#             axis=0,
+#         )
+#     )
+#     < psf_scale
+# )
 
-plt.imshow(disk)
+# plt.imshow(disk)
 
-# %%
-static_psf_full = np.fft.ifftshift(np.fft.fft2(disk))
+# # %%
+# static_psf_full = np.fft.ifftshift(np.fft.fft2(disk))
 
-# np.absolute(xx) > psf_width
+# # np.absolute(xx) > psf_width
 
-# 128*((1/0.75)*(1/64))*2
+# # 128*((1/0.75)*(1/64))*2
 
-psf_width_pc = (((1/psf_scale)*(1/(image_width/2))))
-psf_width_px = 20*image_width*psf_width_pc
+# psf_width_pc = (((1/psf_scale)*(1/(image_width/2))))
+# psf_width_px = 20*image_width*psf_width_pc
 
-# psf_mask = ~np.prod((np.absolute([xx,yy]) < 0.1),axis=0).astype(bool)
+# # psf_mask = ~np.prod((np.absolute([xx,yy]) < 0.1),axis=0).astype(bool)
 
-# import numpy.ma as ma
+# # import numpy.ma as ma
 
-# mx = ma.masked_array(static_psf_full, mask=psf_mask)
-# ma.getdata(mx)
-# # static_psf_full[~psf_mask] = np.nan
-# # static_psf_full = static_psf_full[~np.isnan(static_psf_full)]
+# # mx = ma.masked_array(static_psf_full, mask=psf_mask)
+# # ma.getdata(mx)
+# # # static_psf_full[~psf_mask] = np.nan
+# # # static_psf_full = static_psf_full[~np.isnan(static_psf_full)]
 
-plt.imshow(np.absolute(static_psf_full))
-# %%
-from skimage.util import crop
-# bounding_box = tuple(image_width+np.ceil(((-psf_width_px/2,psf_width_px/2))*len(static_psf_full.shape)));bounding_box
+# plt.imshow(np.absolute(static_psf_full))
+# # %%
+# from skimage.util import crop
+# # bounding_box = tuple(image_width+np.ceil(((-psf_width_px/2,psf_width_px/2))*len(static_psf_full.shape)));bounding_box
 
-# bounding_box = tuple(image_width+np.ceil(((-psf_width_px/2,psf_width_px/2))*len(static_psf_full.shape)));bounding_box
+# # bounding_box = tuple(image_width+np.ceil(((-psf_width_px/2,psf_width_px/2))*len(static_psf_full.shape)));bounding_box
 
-# bounding_box = tuple(map(tuple,np.array([image_width+np.array([-psf_width_px/2,psf_width_px/2])]*len(static_psf_full.shape))))
+# # bounding_box = tuple(map(tuple,np.array([image_width+np.array([-psf_width_px/2,psf_width_px/2])]*len(static_psf_full.shape))))
 
-# bounding_box = np.array([image_width/2+np.array([-psf_width_px/2,psf_width_px/2])]*len(static_psf_full.shape)).astype(int)
-# lower = image_width/2-psf_width_px/2
-# upper = image_width/2+psf_width_px/2
-crop_edge = np.rint((image_width/2)-psf_width_px/2).astype(int)
-static_psf = crop(static_psf_full,((37,37),(37,37)))
-plt.imshow(np.real(static_psf))
-plt.title("PSF")
-plt.show()
+# # bounding_box = np.array([image_width/2+np.array([-psf_width_px/2,psf_width_px/2])]*len(static_psf_full.shape)).astype(int)
+# # lower = image_width/2-psf_width_px/2
+# # upper = image_width/2+psf_width_px/2
+# crop_edge = np.rint((image_width/2)-psf_width_px/2).astype(int)
+# static_psf = crop(static_psf_full,((37,37),(37,37)))
+# plt.imshow(np.real(static_psf))
+# plt.title("PSF")
+# plt.show()
 # %%
 astro_blur = conv2(astro, static_psf, "same")  # Blur image
 
