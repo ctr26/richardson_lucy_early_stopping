@@ -14,7 +14,7 @@ THINNING_TYPE = "poisson"
 MAX_ITER = 200
 
 SIGNAL_STRENGTH = 2**8
-SIGNAL_STRENGTH = np.round(np.linspace(1,0,11),2)
+SIGNAL_STRENGTH = np.round(np.linspace(1,0.1,10),2)
 
 COIN_FLIP_BIAS = 0.5
 COIN_FLIP_BIAS = np.round(np.linspace(0.5,1,11),2)
@@ -23,7 +23,7 @@ SAVE_IMAGES = 0
 IMAGE_SCALE = 4
 
 PSF_SCALE = 0.5
-PSF_SCALE = np.round(np.linspace(0,1,11),2)
+PSF_SCALE = np.round(np.linspace(0.1,1,10),2)
 PSF_GRADIENT = np.round(np.linspace(0,1,11),2)
 
 BACKGROUND_L = 1
