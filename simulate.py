@@ -2,6 +2,14 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+from skimage.exposure import rescale_intensity
+from PIL import Image, ImageOps
+import pathlib
+from dask.diagnostics import ProgressBar
+import dask.array as da
+import dask
+from skimage.util import random_noise
+import argparse
 from sklearn import preprocessing
 from scipy.sparse.linalg.interface import LinearOperator
 from numpy.random import binomial
@@ -63,12 +71,14 @@ from sklearn.impute import SimpleImputer
 class psf_switch_enum(Enum):
     STATIC, VAR_PSF, VAR_ILL = auto(), auto(), auto()
 
+
 signal_strength = 1
 coin_flip_bias = 0.5
 savefig = 1
 save_images = 0
 image_scale = 4
 psf_scale = 0.75
+psf_gradient = 1
 psf_size = 64
 psf_type = "static"
 max_iter = 100
@@ -76,11 +86,11 @@ thinning_type = "poisson"
 out_dir = "out"
 background_L = 1
 background_k = 0
+
 # Define constants: psf height width and image rescaling factor
 # %%
 
 # if __name__ == "__main__":
-import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--signal_strength", default=signal_strength, type=float)
@@ -89,6 +99,7 @@ parser.add_argument("--savefig", default=savefig, type=int)
 parser.add_argument("--save_images", default=save_images, type=int)
 parser.add_argument("--image_scale", default=image_scale, type=int)
 parser.add_argument("--psf_scale", default=psf_scale, type=float)
+parser.add_argument("--psf_gradient", default=psf_gradient, type=float)
 parser.add_argument("--psf_type", default=psf_type, type=str)
 parser.add_argument("--max_iter", default=max_iter, type=int)
 parser.add_argument("--thinning_type", default=thinning_type, type=str)
@@ -134,11 +145,13 @@ def psf_guass(w=psf_w, h=psf_h, sigma=3):
 # Define a function that scales the PSF as a function of radial distance
 
 
-def psf_vary(psf_window_h, psf_window_w, radius, scale, sigma=0.5):
+def psf_vary(psf_window_h, psf_window_w, radius, psf_scale, psf_gradient, scale):
+    sigma_0 = psf_scale / scale
+    sigma = psf_gradient*abs(radius)*sigma_0 + sigma_0
     return psf_guass(
         w=round(psf_window_h),
         h=round(psf_window_w),
-        sigma=(0.5 / scale) * abs((-0.4 * radius)) + 0.1,
+        sigma=sigma
     )
 
 
@@ -147,10 +160,10 @@ static_psf = psf_guass(
 )
 #  %%
 # %% Deconvolution
-from skimage.util import random_noise
 
 astro = (
-    rescale(color.rgb2gray(data.human_mitosis()), 1.0 / image_scale) / signal_strength
+    rescale(color.rgb2gray(data.human_mitosis()),
+            1.0 / image_scale) / signal_strength
 )
 
 # image_width, image_height = np.shape(astro)
@@ -184,7 +197,7 @@ astro = (
 #             [
 #                 *np.square(
 #                     [
-#                         xx, yy 
+#                         xx, yy
 #                     ]
 #                 )
 #             ],
@@ -286,7 +299,8 @@ radius_samples = np.linspace(-1, 1, 5)
 fig, ax = plt.subplots(nrows=1, ncols=len(radius_samples), figsize=(16, 7))
 
 for i, radius in enumerate(np.linspace(-1, 1, 5)):
-    psf_current = psf_vary(psf_window_h, psf_window_w, radius, scale)
+    psf_current = psf_vary(psf_window_h, psf_window_w,
+                           radius, psf_scale, psf_gradient, scale)
     ax[i].imshow(psf_current)
     ax[i].set_title("Radius: " + str(radius))
 plt.show()
@@ -299,8 +313,6 @@ if psf_switch == psf_switch_enum.VAR_PSF:
 
 # %% Loop over each row of H and insert a flattened PSF
 # that is the same shape as the input image
-import dask
-import dask.array as da
 
 
 def make_flat_psf(i, psf_switch, static_psf, astro):
@@ -335,7 +347,6 @@ for i in tqdm(np.arange(N_v)):
 # array = da.from_delayed(
 #     delayed_list, (len(delayed_list),), dtype=float
 # )
-from dask.diagnostics import ProgressBar
 
 with ProgressBar():
     stack = da.stack(delayed_list, axis=0)
@@ -353,8 +364,8 @@ g_blurred = H.dot(astro.reshape(-1, 1))
 # f = np.matrix(g_blurred) + astro_noise.reshape(g_blurred.shape)
 # g_blurred
 
-lin = np.linspace(-1,1,astro.shape[0])
-xx,yy = np.meshgrid(lin,lin)
+lin = np.linspace(-1, 1, astro.shape[0])
+xx, yy = np.meshgrid(lin, lin)
 
 background = background_L/(1 + np.exp(-background_k*xx))
 background = background - background.min()
@@ -388,10 +399,10 @@ NE_Rtol = 1e-6
 sigmaSq = 0.0
 beta = 0.0
 # integer_signal = np.rint(b*2**16).astype(int)
-coin_flip_scale = np.random.binomial([2 ** 8] * len(b), coin_flip_bias) / [2 ** 8]
+coin_flip_scale = np.random.binomial(
+    [2 ** 8] * len(b), coin_flip_bias) / [2 ** 8]
 # coin_flip_scale = np.random.binomial([2 ** 8] * len(b), 0.5) / 2 ** 8
 
-from skimage.transform import rescale, resize, downscale_local_mean
 
 T_thinned = b.copy().reshape(astro.shape)
 V_thinned = b.copy().reshape(astro.shape)
@@ -553,16 +564,18 @@ b = b + np.matrix(sigmaSq * np.ones(nrays)).T
 iterations = range(max_iter)
 range_tqdm = tqdm(iterations)
 
+
 def p_x_given_Ax(x, Ax):
     return np.multiply(np.log(Ax), (x)) - Ax - np.log(scipy.special.factorial(x))
 
 
 def log_liklihood_x_given_Ax(x, Ax):
     return np.sum(
-        p_x_given_Ax(x,Ax)
+        p_x_given_Ax(x, Ax)
     )
 
 #  %% RL
+
 
 for i in range_tqdm:
     tic = time.time()
@@ -640,7 +653,8 @@ for i in range_tqdm:
     # a_flat_scaled = (x_flat - np.mean(x_flat)) / (np.std(x_flat) * len(x_flat))
     # b_flat_scaled = (gt_flat - np.mean(gt_flat)) / (np.std(gt_flat))
     # cross_correlation[i] = np.sum(np.correlate(a_flat_scaled, b_flat_scaled, 'full'))
-    cross_correlation[i] = np.sum(np.correlate(x_flat_scaled, gt_flat_scaled, "full"))
+    cross_correlation[i] = np.sum(np.correlate(
+        x_flat_scaled, gt_flat_scaled, "full"))
     # a = np.dot(abs(x_flat_scaled),abs(gt_flat_scaled),'full')
 
     log_liklihood[i] = log_liklihood_x_given_Ax(b, Ax)
@@ -655,9 +669,9 @@ for i in range_tqdm:
             p_x_given_Ax(V, Ax),
             np.log(
                 p_x_given_Ax(V, Ax) / p_x_given_Ax(T, Ax)
-                )
             )
         )
+    )
 
 # data = pd.DataFrame()
 #  %%
@@ -694,8 +708,6 @@ vars_dict = dict(
 )
 
 
-import pathlib
-
 print(f"dir: {out_dir}")
 pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
 
@@ -706,8 +718,6 @@ data_df = pd.DataFrame.from_dict(vars_dict)
 
 data_df.to_csv(os.path.join(out_dir, "data.csv"))
 
-from PIL import Image, ImageOps
-from skimage.exposure import rescale_intensity
 
 Image.fromarray(rescale_intensity(T.reshape(astro.shape), out_range=np.uint8)).convert(
     "L"
