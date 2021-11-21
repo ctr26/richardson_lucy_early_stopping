@@ -363,6 +363,9 @@ plt.imshow(g_blurred.reshape(astro.shape))
 #  %%
 # Dodgy noise
 f = random_noise(np.matrix(g_blurred), "poisson")
+rng = np.random.default_rng()
+# Better noise
+f = rng.poisson(np.rint(g_blurred*255/signal_strength))/255
 
 fig, ax = plt.subplots(ncols=3, nrows=1, figsize=(16, 7))
 

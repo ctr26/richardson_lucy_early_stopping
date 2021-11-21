@@ -4,7 +4,7 @@
 # Nomenclature
 
 - signal_strength
-    - Between 0 and 1 scaling of image intensity before poisson noise (fails at 0)
+    - Between 1 and 255 scaling of image intensity before poisson noise
 -  psf_scale
    -  gaussian psf width in sigma (I think)
 - coin_flip_bias
