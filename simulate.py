@@ -84,7 +84,7 @@ psf_type = "static"
 max_iter = 100
 thinning_type = "poisson"
 out_dir = "out"
-background_L = 1
+background_l = 1
 background_k = 0
 
 # Define constants: psf height width and image rescaling factor
@@ -104,7 +104,7 @@ parser.add_argument("--psf_type", default=psf_type, type=str)
 parser.add_argument("--max_iter", default=max_iter, type=int)
 parser.add_argument("--thinning_type", default=thinning_type, type=str)
 parser.add_argument("--out_dir", default=out_dir, type=str)
-parser.add_argument("--background_L", default=background_L, type=float)
+parser.add_argument("--background_l", default=background_l, type=float)
 parser.add_argument("--background_k", default=background_k, type=float)
 
 try:
@@ -163,7 +163,7 @@ static_psf = psf_guass(
 
 astro = (
     rescale(color.rgb2gray(data.human_mitosis()),
-            1.0 / image_scale) / signal_strength
+            1.0 / image_scale)
 )
 
 # image_width, image_height = np.shape(astro)
@@ -259,22 +259,22 @@ astro_blur = conv2(astro, static_psf, "same")  # Blur image
 #     np.random.poisson(lam=astro_blur * signal_strength, size=astro_blur.shape)
 # ) / signal_strength
 
-astro_corrupt = random_noise(astro_blur, "poisson")
+# astro_corrupt = random_noise(astro_blur, "poisson")
 
-deconvolved_RL = np.real(restoration.richardson_lucy(
-    astro_blur, static_psf, iterations=10
-))  # RL deconvolution
+# deconvolved_RL = np.real(restoration.richardson_lucy(
+#     astro_blur, static_psf, iterations=10
+# ))  # RL deconvolution
 
-fig, ax = plt.subplots(nrows=1, ncols=4, figsize=(16, 7))
-ax[0].imshow(astro)
-ax[0].set_title("Truth")
-ax[1].imshow(astro_blur)
-ax[1].set_title("Blurred")
-ax[2].imshow(astro_corrupt)
-ax[2].set_title("Blurred and noised")
-ax[3].imshow(deconvolved_RL)
-ax[3].set_title("Deconvolved")
-plt.show()
+# fig, ax = plt.subplots(nrows=1, ncols=4, figsize=(16, 7))
+# ax[0].imshow(astro)
+# ax[0].set_title("Truth")
+# ax[1].imshow(astro_blur)
+# ax[1].set_title("Blurred")
+# ax[2].imshow(astro_corrupt)
+# ax[2].set_title("Blurred and noised")
+# ax[3].imshow(deconvolved_RL)
+# ax[3].set_title("Deconvolved")
+# plt.show()
 
 # %%
 
@@ -306,23 +306,25 @@ for i, radius in enumerate(np.linspace(-1, 1, 5)):
 plt.show()
 
 
-if psf_switch == psf_switch_enum.STATIC:
-    filename = "H_staticpsf"
-if psf_switch == psf_switch_enum.VAR_PSF:
-    filename = "H_varpsf"
+# if psf_switch == psf_switch_enum.STATIC:
+#     filename = "H_staticpsf"
+# if psf_switch == psf_switch_enum.VAR_PSF:
+#     filename = "H_varpsf"
 
 # %% Loop over each row of H and insert a flattened PSF
 # that is the same shape as the input image
 
 
-def make_flat_psf(i, psf_switch, static_psf, astro):
+def make_flat_psf(i, psf_window_h, psf_window_w,
+                  psf_scale, psf_gradient, scale, astro):
     coords = np.unravel_index(i, np.array(astro.shape))
     r_dist = r_map[coords]  # Convert to radius
     # Select mode for generating H, i.e. static/varying psf etc.
-    if psf_switch == psf_switch_enum.STATIC:
-        psf_current = static_psf
-    if psf_switch == psf_switch_enum.VAR_PSF:
-        psf_current = psf_vary(psf_window_h, psf_window_w, r_dist, scale)
+    # if psf_switch == psf_switch_enum.STATIC:
+    #     psf_current = static_psf
+    # if psf_switch == psf_switch_enum.VAR_PSF:
+    psf_current = psf_vary(psf_window_h, psf_window_w,
+                           r_dist, psf_scale, psf_gradient, scale)
 
     psf_window_volume[i, :, :] = psf_current
     delta_image = np.zeros_like(astro)
@@ -336,7 +338,8 @@ delayed_list = []
 for i in tqdm(np.arange(N_v)):
     # Get the xy coordinates of the ith pixel in the original image
     # delayed_list.append(
-    delayed_obj = dask.delayed(make_flat_psf)(i, psf_switch, static_psf, astro)
+    delayed_obj = dask.delayed(make_flat_psf)(i, psf_window_h, psf_window_w,
+                                              psf_scale, psf_gradient, scale, astro)
     delayed_list.append(
         da.from_delayed(
             delayed_obj, shape=(np.multiply(*astro.shape),), dtype=np.float32
@@ -367,7 +370,7 @@ g_blurred = H.dot(astro.reshape(-1, 1))
 lin = np.linspace(-1, 1, astro.shape[0])
 xx, yy = np.meshgrid(lin, lin)
 
-background = background_L/(1 + np.exp(-background_k*xx))
+background = background_l/(1 + np.exp(-background_k*xx))
 background = background - background.min()
 
 g_blurred = g_blurred + background.reshape(g_blurred.shape)
@@ -377,7 +380,7 @@ plt.imshow(g_blurred.reshape(astro.shape))
 f = random_noise(np.matrix(g_blurred), "poisson")
 rng = np.random.default_rng()
 # Better noise
-f = rng.poisson(np.rint(g_blurred*2**16/signal_strength))/2**16
+f = rng.poisson(np.rint(g_blurred*(2**16)*signal_strength))/2**16
 plt.imshow(f.reshape(astro.shape))
 #  %%
 fig, ax = plt.subplots(ncols=3, nrows=1, figsize=(16, 7))
