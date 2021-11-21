@@ -72,7 +72,7 @@ psf_scale = 0.75
 psf_size = 64
 psf_type = "static"
 max_iter = 100
-thinning_type = "none"
+thinning_type = "poisson"
 out_dir = "out"
 background_L = 1
 background_k = 0
@@ -357,6 +357,7 @@ lin = np.linspace(-1,1,astro.shape[0])
 xx,yy = np.meshgrid(lin,lin)
 
 background = background_L/(1 + np.exp(-background_k*xx))
+background = background - background.min()
 
 g_blurred = g_blurred + background.reshape(g_blurred.shape)
 plt.imshow(g_blurred.reshape(astro.shape))
@@ -365,8 +366,9 @@ plt.imshow(g_blurred.reshape(astro.shape))
 f = random_noise(np.matrix(g_blurred), "poisson")
 rng = np.random.default_rng()
 # Better noise
-f = rng.poisson(np.rint(g_blurred*255/signal_strength))/255
-
+f = rng.poisson(np.rint(g_blurred*2**16/signal_strength))/2**16
+plt.imshow(f.reshape(astro.shape))
+#  %%
 fig, ax = plt.subplots(ncols=3, nrows=1, figsize=(16, 7))
 
 ax[0].imshow(f.reshape(astro.shape))
@@ -524,7 +526,7 @@ log_liklihood_T = np.zeros(max_iter)
 psnr_V = np.zeros(max_iter)
 psnr_T = np.zeros(max_iter)
 psnr_b = np.zeros(max_iter)
-
+kl_div = np.zeros(max_iter)
 
 norm_v = np.zeros(max_iter)
 
@@ -551,12 +553,16 @@ b = b + np.matrix(sigmaSq * np.ones(nrays)).T
 iterations = range(max_iter)
 range_tqdm = tqdm(iterations)
 
+def p_x_given_Ax(x, Ax):
+    return np.multiply(np.log(Ax), (x)) - Ax - np.log(scipy.special.factorial(x))
+
 
 def log_liklihood_x_given_Ax(x, Ax):
     return np.sum(
-        np.multiply(np.log(Ax), (x)) - Ax - np.log(scipy.special.factorial(x))
+        p_x_given_Ax(x,Ax)
     )
 
+#  %% RL
 
 for i in range_tqdm:
     tic = time.time()
@@ -644,9 +650,17 @@ for i in range_tqdm:
     psnr_V[i] = peak_signal_noise_ratio(V, Ax)
     psnr_T[i] = peak_signal_noise_ratio(T, Ax)
     psnr_b[i] = peak_signal_noise_ratio(b, Ax)
+    kl_div[i] = np.sum(
+        np.multiply(
+            p_x_given_Ax(V, Ax),
+            np.log(
+                p_x_given_Ax(V, Ax) / p_x_given_Ax(T, Ax)
+                )
+            )
+        )
 
 # data = pd.DataFrame()
-
+#  %%
 vars_dict = dict(
     {
         i: eval(i)
@@ -674,6 +688,7 @@ vars_dict = dict(
             "psnr_V",
             "psnr_T",
             "psnr_b",
+            "kl_div"
         ]
     }
 )
