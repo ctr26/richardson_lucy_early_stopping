@@ -8,7 +8,7 @@ import os
 PSF_TYPE = ["static","variable"]
 THINNING_TYPE = ["poisson","spatial_interlaced",
                 "spatial_interpolated", "spatial_repeated","none"]
-# THINNING_TYPE = "poisson"
+THINNING_TYPE = "poisson"
 
 PSF_TYPE = "static"
 # PSF_SCALE = 1

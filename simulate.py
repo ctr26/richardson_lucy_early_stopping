@@ -63,7 +63,6 @@ from sklearn.impute import SimpleImputer
 class psf_switch_enum(Enum):
     STATIC, VAR_PSF, VAR_ILL = auto(), auto(), auto()
 
-
 signal_strength = 1
 coin_flip_bias = 0.5
 savefig = 1
@@ -75,6 +74,8 @@ psf_type = "static"
 max_iter = 100
 thinning_type = "none"
 out_dir = "out"
+background_L = 1
+background_k = 0
 # Define constants: psf height width and image rescaling factor
 # %%
 
@@ -92,6 +93,9 @@ parser.add_argument("--psf_type", default=psf_type, type=str)
 parser.add_argument("--max_iter", default=max_iter, type=int)
 parser.add_argument("--thinning_type", default=thinning_type, type=str)
 parser.add_argument("--out_dir", default=out_dir, type=str)
+parser.add_argument("--background_L", default=background_L, type=float)
+parser.add_argument("--background_k", default=background_k, type=float)
+
 try:
     args = parser.parse_args()
 # globals().update(vars(args))
@@ -344,9 +348,20 @@ plt.imshow(exposure.equalize_hist(measurement_matrix), cmap="gray_r")
 # %%
 
 H = scipy.sparse.linalg.aslinearoperator(measurement_matrix)
+# %%
 g_blurred = H.dot(astro.reshape(-1, 1))
 # f = np.matrix(g_blurred) + astro_noise.reshape(g_blurred.shape)
 # g_blurred
+
+lin = np.linspace(-1,1,astro.shape[0])
+xx,yy = np.meshgrid(lin,lin)
+
+background = background_L/(1 + np.exp(-background_k*xx))
+
+g_blurred = g_blurred + background.reshape(g_blurred.shape)
+plt.imshow(g_blurred.reshape(astro.shape))
+#  %%
+# Dodgy noise
 f = random_noise(np.matrix(g_blurred), "poisson")
 
 fig, ax = plt.subplots(ncols=3, nrows=1, figsize=(16, 7))
